@@ -1,0 +1,3 @@
+[submodule "gr-rds"]
+	path = gr-rds
+	url = https://github.com/bastibl/gr-rds.git

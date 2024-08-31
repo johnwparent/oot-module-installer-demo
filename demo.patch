@@ -1,0 +1,188 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index dc89aa7..692ace4 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -173,3 +173,8 @@ endif(ENABLE_PYTHON)
+ install(FILES cmake/Modules/rdsConfig.cmake
+     DESTINATION ${CMAKE_MODULES_DIR}/rds
+ )
++
++if(GR_BUILD_INSTALLER)
++    GR_GENERATE_INSTALL()
++    include(cmake/Modules/GRRDSCPack.cmake)
++endif(GR_BUILD_INSTALLER)
+diff --git a/cmake/Modules/GRRDSCPack.cmake b/cmake/Modules/GRRDSCPack.cmake
+new file mode 100644
+index 0000000..8665035
+--- /dev/null
++++ b/cmake/Modules/GRRDSCPack.cmake
+@@ -0,0 +1,36 @@
++set(CMAKE_INSTALL_UCRT_LIBRARIES TRUE)
++set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_NO_WARNINGS TRUE)
++include(InstallRequiredSystemLibraries)
++
++set(GNURadio_SOURCE_DIR ${PROJECT_SOURCE_DIR})
++set(GNURadio_BINARY_DIR ${CMAKE_BINARY_DIR})
++
++set(CPACK_PACKAGE_NAME "GRRds")
++set(CPACK_PACKAGE_VERSION_MAJOR "1")
++set(CPACK_PACKAGE_VERSION_MINOR "0")
++set(CPACK_PACKAGE_VERSION_PATCH "0")
++set(CPACK_PACKAGE_VERSION "1.0.0")
++set(CPACK_PACKAGE_INSTALL_DIRECTORY "GNU Radio")
++set(CPACK_PACKAGE_VENDOR "https://github.com/bastibl/gr-rds")
++set(CPACK_PACKAGE_DESCRIPTION
++  "FM RDS/TMC Transceiver")
++
++if(WIN32)
++  file(COPY ${CMAKE_SOURCE_DIR}/COPYING DESTINATION ${CMAKE_BINARY_DIR}/COPYING.txt)
++  set(COPYING ${CMAKE_BINARY_DIR}/COPYING.txt)
++  set(CPACK_WIX_EXTRA_SOURCES "${CMAKE_SOURCE_DIR}/cmake/Modules/p.wxs")
++else()
++  set(COPYING "${CMAKE_SOURCE_DIR}/COPYING")
++endif()
++set(CPACK_RESOURCE_FILE_LICENSE ${COPYING})
++
++configure_file("${CMAKE_CURRENT_LIST_DIR}/OOTModuleCPackOptions.cmake.in"
++  "${GNURadio_BINARY_DIR}/OOTModuleCPackOptions.cmake" @ONLY)
++set(CPACK_PROJECT_CONFIG_FILE
++  "${GNURadio_BINARY_DIR}/OOTModuleCPackOptions.cmake")
++
++include(CPack)
++
++foreach(component ${_gr_enabled_components})
++  GR_CONFIGURE_INSTALLER_COMPONENT(${component})
++endforeach()
+diff --git a/cmake/Modules/OOTModuleCPackOptions.cmake.in b/cmake/Modules/OOTModuleCPackOptions.cmake.in
+new file mode 100644
+index 0000000..3049480
+--- /dev/null
++++ b/cmake/Modules/OOTModuleCPackOptions.cmake.in
+@@ -0,0 +1,26 @@
++# This file is configured at cmake time, loaded at cpack time.
++
++set(CPACK_COMPONENT_UNSPECIFIED_HIDDEN TRUE)
++set(CPACK_COMPONENT_UNSPECIFIED_REQUIRED TRUE)
++
++if(CPACK_GENERATOR MATCHES "WIX")
++  set(CPACK_WIX_PROPERTY_ARPURLINFOABOUT "https://github.com/bastibl/gr-rds")
++  set(CPACK_WIX_PROPERTY_ARPCONTACT "https://github.com/bastibl/gr-rds")
++  set(CPACK_WIX_PROPERTY_ARPCOMMENTS
++    "FM RDS/TMC Transceiver"
++  )
++
++  set(CPACK_WIX_PROGRAM_MENU_FOLDER "GNU Radio")
++  set(CPACK_WIX_LIGHT_EXTRA_FLAGS "-dcl:high")
++  # set(CPACK_WIX_PATCH_FILE "@CMAKE_SOURCE_DIR@/cmake/Modules/patch.wxs")
++endif()
++
++# Mac DMG specific settings
++if(CPACK_GENERATOR MATCHES "DragNDrop")
++  set(CPACK_DMG_FORMAT "UDBZ")
++  set(VERSION "${CPACK_PACKAGE_VERSION}")
++  # this also sets the volume name
++  set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${VERSION}")
++endif()
++
++
+diff --git a/cmake/Modules/p.wxs b/cmake/Modules/p.wxs
+new file mode 100644
+index 0000000..4f6954a
+--- /dev/null
++++ b/cmake/Modules/p.wxs
+@@ -0,0 +1,12 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
++<Fragment>
++    <Property Id="INSTALLDIR">
++        <RegistrySearch Id='OOTModuleSearch'
++        Root='HKLM'
++        Key='Software\GNURadio\GNURadio'
++        Name='InstallDir'
++        Type='raw'/>
++    </Property>
++</Fragment>
++</Wix>
+\ No newline at end of file
+diff --git a/cmake/Modules/patch.wxs b/cmake/Modules/patch.wxs
+new file mode 100644
+index 0000000..3d75427
+--- /dev/null
++++ b/cmake/Modules/patch.wxs
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<CPackWiXPatch>
++	<CPackWiXFragment Id="#PRODUCTFEATURE">
++    <PropertyRef Id="INSTALLDIR"/>
++	</CPackWiXFragment>
++</CPackWiXPatch>
+\ No newline at end of file
+diff --git a/lib/parser_impl.cc b/lib/parser_impl.cc
+index 72c45b2..955e162 100644
+--- a/lib/parser_impl.cc
++++ b/lib/parser_impl.cc
+@@ -67,7 +67,7 @@ void parser_impl::reset() {
+ 	mono_stereo                    = false;
+ 	artificial_head                = false;
+ 	compressed                     = false;
+-	static_pty                     = false;
++	dynamic_pty                    = false;
+ }
+ 
+ /* type 0 = PI
+@@ -105,16 +105,16 @@ void parser_impl::decode_type0(unsigned int *group, bool B) {
+ 	/* see page 41, table 9 of the standard */
+ 	switch (segment_address) {
+ 		case 0:
+-			mono_stereo=decoder_control_bit;
++			dynamic_pty=decoder_control_bit;
+ 		break;
+ 		case 1:
+-			artificial_head=decoder_control_bit;
++			compressed=decoder_control_bit;
+ 		break;
+ 		case 2:
+-			compressed=decoder_control_bit;
++			artificial_head=decoder_control_bit;
+ 		break;
+ 		case 3:
+-			static_pty=decoder_control_bit;
++			mono_stereo=decoder_control_bit;
+ 		break;
+ 		default:
+ 		break;
+@@ -125,7 +125,7 @@ void parser_impl::decode_type0(unsigned int *group, bool B) {
+ 	flagstring[3] = mono_stereo            ? '1' : '0';
+ 	flagstring[4] = artificial_head        ? '1' : '0';
+ 	flagstring[5] = compressed             ? '1' : '0';
+-	flagstring[6] = static_pty             ? '1' : '0';
++	flagstring[6] = dynamic_pty            ? '1' : '0';
+ 	static std::string af_string;
+ 
+ 	if(!B) { // type 0A
+diff --git a/lib/parser_impl.h b/lib/parser_impl.h
+index 8142b19..eaf119f 100644
+--- a/lib/parser_impl.h
++++ b/lib/parser_impl.h
+@@ -68,7 +68,7 @@ private:
+ 	bool           mono_stereo;
+ 	bool           artificial_head;
+ 	bool           compressed;
+-	bool           static_pty;
++	bool           dynamic_pty;
+ 	bool           log;
+ 	bool           debug;
+ 	unsigned char  pty_locale;
+diff --git a/python/rdspanel.py b/python/rdspanel.py
+index 37f879d..7f30175 100644
+--- a/python/rdspanel.py
++++ b/python/rdspanel.py
+@@ -162,7 +162,7 @@ class rdsPanel(gr.sync_block, QtWidgets.QWidget):
+                                 self.CMP.setStyleSheet("font-weight: bold; color: red")
+                         else:
+                                 self.CMP.setStyleSheet("font-weight: bold; color: gray")
+-                        if (flags[6]=='1'):
++                        if (flags[6]=='0'):
+                                 self.stPTY.setStyleSheet("font-weight: bold; color: red")
+                         else:
+                                 self.stPTY.setStyleSheet("font-weight: bold; color: gray")

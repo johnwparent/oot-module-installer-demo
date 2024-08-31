@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+<Property Id="OOTModuleTree">
+  <RegistrySearch Id='OOTModuleSearch'
+     Root='HKLM'
+     Key='Software\GNURadio\GNURadio'
+     Name='OOTModules'
+     Type='raw'/>
+</Property>
+<CustomAction Id="SetInstallFolder" Directory="INSTALLFOLDER" Value="[OOTModuleTree]" />
+<InstallExecuteSequence>
+    <Custom Action="SetInstallFolder" After="CostFinalize">NOT Installed</Custom>
+</InstallExecuteSequence>
